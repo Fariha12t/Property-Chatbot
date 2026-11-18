@@ -75,7 +75,7 @@ async def complete(messages: list[dict], max_attempts: int = 4) -> tuple[str, st
                     timeout=40,
                 )
                 if r.status_code != 200:
-                    errors.append(f"{model}: HTTP {r.status_code}")
+                    errors.append(f"{model}: HTTP {r.status_code} {r.text[:160]}")
                     continue
                 text = (r.json()["choices"][0]["message"].get("content") or "").strip()
                 if text:
@@ -83,4 +83,5 @@ async def complete(messages: list[dict], max_attempts: int = 4) -> tuple[str, st
                 errors.append(f"{model}: empty reply")
             except Exception as e:  # timeouts, bad JSON, network
                 errors.append(f"{model}: {type(e).__name__}")
+    print("LLM errors:", errors, flush=True)
     raise LLMUnavailable("; ".join(errors) or "no free models available")

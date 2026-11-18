@@ -61,7 +61,7 @@ async def chat(body: ChatIn, request: Request):
     users = [t.content for t in body.history if t.role == "user"]
     # Short follow-ups ("and in Riyadh?") borrow the previous question for retrieval.
     query = body.message if len(body.message.split()) > 5 or not users else f"{users[-1]} {body.message}"
-    hits = index.search(query, k=5)
+    hits = index.search(query, k=8)
     sources = [{"n": i + 1, "title": h["title"], "url": h["url"], "site": h["site"]} for i, h in enumerate(hits)]
 
     if not hits:
