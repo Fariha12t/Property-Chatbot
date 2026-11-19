@@ -1,4 +1,4 @@
-"""OpenRouter client. Uses free models only, tries several in turn because free tiers are rate-limited."""
+"""OpenRouter client. Free models only; remembers the model that works and skips ones that are failing."""
 import os
 import time
 
@@ -14,6 +14,8 @@ STATIC_FALLBACK = [
 ]
 
 _cache: dict = {"at": 0.0, "models": []}
+_last_good: str | None = None
+_cooldown: dict[str, float] = {}  # model -> time until which it is skipped
 
 
 class LLMUnavailable(Exception):
@@ -58,10 +60,21 @@ async def _discover(client: httpx.AsyncClient) -> list[str]:
 
 async def candidates(client: httpx.AsyncClient) -> list[str]:
     pinned = [m.strip() for m in os.environ.get("OPENROUTER_MODELS", "").split(",") if m.strip()]
-    return pinned or await _discover(client)
+    models = pinned or await _discover(client)
+    now = time.time()
+    usable = [m for m in models if _cooldown.get(m, 0) <= now]
+    if _last_good in usable:
+        usable.remove(_last_good)
+        usable.insert(0, _last_good)
+    return usable or models
+
+
+def _skip(model: str, seconds: int) -> None:
+    _cooldown[model] = time.time() + seconds
 
 
 async def complete(messages: list[dict], max_attempts: int = 8) -> tuple[str, str]:
+    global _last_good
     if not os.environ.get("OPENROUTER_API_KEY"):
         raise LLMUnavailable("OPENROUTER_API_KEY is not set")
     errors = []
@@ -74,14 +87,18 @@ async def complete(messages: list[dict], max_attempts: int = 8) -> tuple[str, st
                     json={"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 700},
                     timeout=25,
                 )
-                if r.status_code != 200:
-                    errors.append(f"{model}: HTTP {r.status_code} {r.text[:160]}")
+                if r.status_code == 200:
+                    text = (r.json()["choices"][0]["message"].get("content") or "").strip()
+                    if text:
+                        _last_good = model
+                        return text, model
+                    errors.append(f"{model}: empty reply")
+                    _skip(model, 600)
                     continue
-                text = (r.json()["choices"][0]["message"].get("content") or "").strip()
-                if text:
-                    return text, model
-                errors.append(f"{model}: empty reply")
+                errors.append(f"{model}: HTTP {r.status_code}")
+                _skip(model, 60 if r.status_code == 429 else 3600)
             except Exception as e:  # timeouts, bad JSON, network
                 errors.append(f"{model}: {type(e).__name__}")
+                _skip(model, 120)
     print("LLM errors:", errors, flush=True)
     raise LLMUnavailable("; ".join(errors) or "no free models available")

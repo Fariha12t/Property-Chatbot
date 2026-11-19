@@ -38,6 +38,7 @@ class ChatIn(BaseModel):
 
 
 _hits: dict[str, deque] = defaultdict(deque)
+_answers: dict[str, tuple] = {}
 
 
 def _rate_limit(request: Request, per_minute: int = 15) -> None:
@@ -77,9 +78,15 @@ async def chat(body: ChatIn, request: Request):
     messages += [{"role": t.role, "content": t.content} for t in body.history[-6:] if t.role in ("user", "assistant")]
     messages.append({"role": "user", "content": f"Context:\n{context}\n\nQuestion: {body.message}"})
 
+    key = body.message.strip().lower() if not body.history else None
+    if key and key in _answers and time.time() - _answers[key][0] < 3600:
+        return _answers[key][1]
     try:
         answer, model = await llm.complete(messages)
-        return {"answer": answer, "sources": sources, "model": model}
+        result = {"answer": answer, "sources": sources, "model": model}
+        if key:
+            _answers[key] = (time.time(), result)
+        return result
     except llm.LLMUnavailable:
         # Degrade gracefully: show the best-matching passages instead of failing.
         top = "\n\n".join(f"- {h['text'][:350].strip()}... [{i + 1}]" for i, h in enumerate(hits[:3]))
