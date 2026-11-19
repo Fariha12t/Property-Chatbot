@@ -32,7 +32,7 @@ def chunk_text(text: str, size: int = 900) -> list[str]:
             continue
         if cur and len(cur) + len(line) + 1 > size:
             chunks.append(cur)
-            cur = cur[-150:] + " " + line  # small overlap between chunks
+            cur = cur[-150:].split(" ", 1)[-1] + " " + line  # small overlap between chunks
         else:
             cur = f"{cur}\n{line}" if cur else line
     if cur:
@@ -46,9 +46,13 @@ def load_docs(data_dir: Path) -> list[dict]:
     for sub in ("seed", "scraped"):
         for f in sorted((data_dir / sub).glob("*.jsonl")):
             for line in f.read_text(encoding="utf-8").splitlines():
-                if line.strip():
+                if not line.strip():
+                    continue
+                try:
                     d = json.loads(line)
                     docs[(d["url"], d["title"])] = d
+                except (ValueError, KeyError):
+                    print(f"skipping bad line in {f.name}", flush=True)
     return list(docs.values())
 
 

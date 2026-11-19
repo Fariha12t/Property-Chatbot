@@ -61,7 +61,7 @@ class Fetcher:
                 self.last = time.time()
                 r = self.s.get(url, timeout=25)
                 if r.status_code == 200:
-                    if url.endswith(".gz"):
+                    if r.content[:2] == b"\x1f\x8b":
                         return gzip.decompress(r.content).decode("utf-8", "ignore")
                     return r.text
                 if r.status_code in (429, 503):
