@@ -61,7 +61,7 @@ async def candidates(client: httpx.AsyncClient) -> list[str]:
     return pinned or await _discover(client)
 
 
-async def complete(messages: list[dict], max_attempts: int = 4) -> tuple[str, str]:
+async def complete(messages: list[dict], max_attempts: int = 8) -> tuple[str, str]:
     if not os.environ.get("OPENROUTER_API_KEY"):
         raise LLMUnavailable("OPENROUTER_API_KEY is not set")
     errors = []
@@ -72,7 +72,7 @@ async def complete(messages: list[dict], max_attempts: int = 4) -> tuple[str, st
                     f"{BASE}/chat/completions",
                     headers=_headers(),
                     json={"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 700},
-                    timeout=40,
+                    timeout=25,
                 )
                 if r.status_code != 200:
                     errors.append(f"{model}: HTTP {r.status_code} {r.text[:160]}")
